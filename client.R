@@ -226,6 +226,7 @@ fed_welch_t <- function(servers, varname, groupvar, group1, group2) {
   p  <- 2 * (1 - pt(abs(t), df = df))
   
   list(n1 = n1, n2 = n2, mean1 = mean1, mean2 = mean2,
+       sd1 = sqrt(var1), sd2 = sqrt(var2),
        t = t, df = df, p = p)
 }
 
