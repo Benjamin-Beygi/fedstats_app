@@ -2,13 +2,15 @@
 # =====================================================================
 # Federated Statistics — Coordinator GUI (Shiny)
 #
+# Generalised: loads any .R analysis script that follows the contract:
+#   ANALYSIS_TITLE  — shown in the window title
+#   VARS_SPEC       — used for pre-analysis validation
+#   register_output(name, value, type, caption) — drives dynamic tabs
+#
 # Start with the launcher (double-click):
 #   start_coordinator_gui.command  (macOS)
 #   start_coordinator_gui.bat      (Windows)
 #   bash start_coordinator_gui.sh  (Linux)
-#
-# Or manually:
-#   Rscript -e "shiny::runApp('coordinator_app.R', launch.browser=TRUE)"
 # =====================================================================
 suppressPackageStartupMessages({
   library(shiny)
@@ -17,20 +19,32 @@ suppressPackageStartupMessages({
   library(fedstats)
 })
 
-VARS_SPEC <- list(
-  age           = list(type = "numeric",     min = 18,  max = 100),
-  sexM          = list(type = "binary"),
-  bmi           = list(type = "numeric",     min = 10,  max = 80),
-  nrs_arm_preop = list(type = "numeric",     min = 0,   max = 10),
-  nrs_arm_12m   = list(type = "numeric",     min = 0,   max = 10),
-  mcid_arm_12m  = list(type = "binary"),
-  diag_grp      = list(type = "categorical",
-                        levels = c("radiculopathy", "myelopathy")),
-  diag_myelo    = list(type = "binary")
-)
+# ---------------------------------------------------------------
+# Script metadata extraction
+#
+# Evaluates ONLY the lines before the "if (!exists("servers"...)"
+# block — so we get ANALYSIS_TITLE and VARS_SPEC without triggering
+# any analysis code.
+# ---------------------------------------------------------------
+.extract_meta <- function(script_path) {
+  lines  <- readLines(script_path, warn = FALSE)
+  cutoff <- grep("if\\s*\\(!exists\\s*\\(", lines)[1]
+  if (is.na(cutoff)) cutoff <- length(lines) + 1L
+  code   <- paste(lines[seq_len(cutoff - 1L)], collapse = "\n")
+  env    <- new.env(parent = globalenv())
+  tryCatch(eval(parse(text = code), envir = env), error = function(e) NULL)
+  list(
+    title = if (exists("ANALYSIS_TITLE", envir = env, inherits = FALSE))
+              env$ANALYSIS_TITLE
+            else tools::file_path_sans_ext(basename(script_path)),
+    vars_spec = if (exists("VARS_SPEC", envir = env, inherits = FALSE))
+                  env$VARS_SPEC
+                else NULL
+  )
+}
 
 # ---------------------------------------------------------------
-# Helpers
+# Utilities
 # ---------------------------------------------------------------
 fmt_p <- function(p) {
   p <- suppressWarnings(as.numeric(p))
@@ -45,8 +59,8 @@ cap_print <- function(expr) {
   paste(buf, collapse = "\n")
 }
 
-get_urls <- function(text) {
-  raw <- trimws(strsplit(text, "\n")[[1]])
+get_urls <- function(txt) {
+  raw <- trimws(strsplit(txt, "\n")[[1]])
   raw[nzchar(raw)]
 }
 
@@ -57,20 +71,19 @@ ping_one <- function(url, token, idx) {
     r <- httr::GET(paste0(sub("/+$", "", url), "/health"), hdrs, httr::timeout(8))
     if (httr::status_code(r) == 200) {
       rows <- as.integer(unlist(httr::content(r, as = "parsed")$rows))
-      sprintf("Site %d  [OK]    n = %d rows   %s", idx, rows, url)
+      sprintf("Site %d  [OK]   n = %d rows   %s", idx, rows, url)
     } else {
-      sprintf("Site %d  [ERR]   HTTP %d   %s", idx, httr::status_code(r), url)
+      sprintf("Site %d  [ERR]  HTTP %d   %s", idx, httr::status_code(r), url)
     }
-  }, error = function(e) {
-    sprintf("Site %d  [ERR]   %s", idx, conditionMessage(e))
-  })
+  }, error = function(e) sprintf("Site %d  [ERR]  %s", idx, conditionMessage(e)))
 }
 
 # ---------------------------------------------------------------
-# Detect coordinator's own Tailscale IP for the URL placeholder
+# Coordinator's Tailscale IP for the URL placeholder
 # ---------------------------------------------------------------
 .ts_ip <- tryCatch({
-  cmd <- if (.Platform$OS.type == "windows") "tailscale ip -4" else "tailscale ip -4 2>/dev/null"
+  cmd <- if (.Platform$OS.type == "windows") "tailscale ip -4"
+         else "tailscale ip -4 2>/dev/null"
   ip  <- trimws(system(cmd, intern = TRUE, ignore.stderr = TRUE))
   if (length(ip) > 0 && nzchar(ip[1])) ip[1] else ""
 }, error = function(e) "")
@@ -87,35 +100,52 @@ ping_one <- function(url, token, idx) {
 ui <- fluidPage(
   tags$head(tags$style(HTML("
     body  { font-family: 'Helvetica Neue', Arial, sans-serif; }
-    h5    { color: #2d3748; margin-top: 18px; }
-    .step { font-weight: bold; font-size: 0.88em; margin: 10px 0 2px 0; color: #2b6cb0; }
-    pre   { font-size: 0.82em; background: #f8f9fa; border: 1px solid #dee2e6;
-            border-radius: 4px; padding: 10px; white-space: pre-wrap; }
-    .note { font-size: 0.82em; color: #666; margin-top: 4px; }
+    .step { font-weight: bold; font-size: 0.88em; margin: 14px 0 2px 0;
+            color: #2b6cb0; }
+    .meta-title { font-size: 1.0em; font-weight: bold; color: #2d3748;
+                  margin: 4px 0 1px 0; }
+    .meta-vars  { font-size: 0.78em; color: #555; margin-bottom: 4px;
+                  word-break: break-word; }
+    pre  { font-size: 0.80em; background: #f8f9fa; border: 1px solid #dee2e6;
+           border-radius: 4px; padding: 10px; white-space: pre-wrap;
+           max-height: 480px; overflow-y: auto; }
     .tbl-caption { font-size: 0.82em; color: #555; font-style: italic;
-                   margin: 2px 0 12px 0; }
+                   margin: 4px 0 14px 0; }
+    .welcome { color: #718096; padding: 60px 20px; text-align: center; }
+    .welcome h3 { color: #4a5568; }
+    .note { font-size: 0.80em; color: #666; margin-top: 10px; }
   "))),
 
-  titlePanel("Federated Spine Registry — Coordinator"),
+  uiOutput("app_title_ui"),
 
   sidebarLayout(
     sidebarPanel(
       width = 3,
 
-      div(class = "step", "① Site URLs"),
-      textAreaInput("urls", NULL,
-        placeholder = .url_placeholder,
-        rows = 5, width = "100%"),
+      # ---- Step 1: analysis script ----
+      div(class = "step", "① Analysis script"),
+      fileInput("script_file", NULL, accept = ".R",
+                buttonLabel = "Browse…", placeholder = "No script selected"),
+      uiOutput("script_meta_ui"),
 
-      div(class = "step", "② Security token"),
+      # ---- Step 2: site URLs ----
+      div(class = "step", "② Site URLs  (one per line)"),
+      textAreaInput("urls", NULL,
+                    placeholder = .url_placeholder, rows = 5, width = "100%"),
+
+      # ---- Step 3: optional token ----
+      div(class = "step", "③ Security token"),
       passwordInput("token", NULL, placeholder = "(leave blank if none)"),
 
       br(),
-      actionButton("btn_ping",     "Ping sites",    class = "btn-default btn-sm btn-block"),
+      actionButton("btn_ping",     "Ping sites",
+                   class = "btn-default btn-sm btn-block"),
       br(),
-      actionButton("btn_validate", "Validate data", class = "btn-primary btn-sm btn-block"),
+      actionButton("btn_validate", "Validate data",
+                   class = "btn-primary btn-sm btn-block"),
       br(),
-      actionButton("btn_run",      "Run analysis",  class = "btn-success btn-sm btn-block"),
+      actionButton("btn_run",      "Run analysis",
+                   class = "btn-success btn-sm btn-block"),
 
       hr(),
       verbatimTextOutput("ping_out"),
@@ -127,45 +157,7 @@ ui <- fluidPage(
 
     mainPanel(
       width = 9,
-      tabsetPanel(id = "tabs",
-
-        tabPanel("Validation",
-          br(),
-          verbatimTextOutput("val_out")
-        ),
-
-        tabPanel("Descriptives",
-          br(),
-          h5("Summary statistics"),
-          tableOutput("tbl_desc"),
-          br(),
-          h5("Age by diagnosis group (Welch t-test)"),
-          tableOutput("tbl_ttest"),
-          br(),
-          h5("Sex × diagnosis (chi-square test)"),
-          tableOutput("tbl_chisq"),
-          verbatimTextOutput("txt_chisq_info")
-        ),
-
-        tabPanel("Linear regression",
-          br(),
-          p(strong("Outcome: "), "NRS arm pain at 12 months",
-            br(), strong("Predictors: "), "age (years), sex (male = 1)"),
-          tableOutput("tbl_lm"),
-          div(class = "tbl-caption", verbatimTextOutput("txt_lm_info"))
-        ),
-
-        tabPanel("Logistic regression",
-          br(),
-          p(strong("Outcome: "), "MCID achieved (≥3-point NRS improvement at 12 months)",
-            br(), strong("Predictors: "), "age (years), sex (male = 1)",
-            br(), em("SE = cluster-robust (one cluster per site).")),
-          tableOutput("tbl_logit"),
-          div(class = "tbl-caption", verbatimTextOutput("txt_logit_info")),
-          br(),
-          plotOutput("forest", height = "200px")
-        )
-      )
+      uiOutput("results_panel")
     )
   )
 )
@@ -175,245 +167,242 @@ ui <- fluidPage(
 # ---------------------------------------------------------------
 server <- function(input, output, session) {
 
-  active_servers <- reactiveVal(NULL)
+  rv <- reactiveValues(
+    meta     = NULL,   # list(title, vars_spec)
+    outputs  = NULL,   # list of register_output() entries
+    val_txt  = NULL    # text from standalone Validate
+  )
 
-  # ---- Ping -------------------------------------------------------
+  # ---- Dynamic app title from script ----------------------------
+  output$app_title_ui <- renderUI({
+    title <- if (!is.null(rv$meta)) rv$meta$title
+             else "Federated Analysis — Coordinator"
+    titlePanel(title)
+  })
+
+  # ---- Load script: extract metadata ----------------------------
+  observeEvent(input$script_file, {
+    req(input$script_file)
+    rv$meta    <- tryCatch(
+      .extract_meta(input$script_file$datapath),
+      error = function(e) {
+        showNotification(paste("Could not read script:", e$message),
+                         type = "error"); NULL
+      })
+    rv$outputs <- NULL
+    rv$val_txt <- NULL
+  })
+
+  output$script_meta_ui <- renderUI({
+    m <- rv$meta
+    if (is.null(m)) return(NULL)
+    vs_names <- if (!is.null(m$vars_spec)) names(m$vars_spec) else character(0)
+    tagList(
+      div(class = "meta-title", m$title),
+      if (length(vs_names) > 0)
+        div(class = "meta-vars",
+            strong("Variables: "), paste(vs_names, collapse = ", "))
+    )
+  })
+
+  # ---- Ping -----------------------------------------------------
   observeEvent(input$btn_ping, {
     urls <- get_urls(input$urls)
     if (!length(urls)) {
       showNotification("Enter at least one site URL.", type = "warning")
       return()
     }
-    tok <- input$token
-    ss  <- lapply(urls, function(u) create_remote_server(u, tok))
-    active_servers(ss)
-    lines <- mapply(ping_one, urls, idx = seq_along(urls),
-                    MoreArgs = list(token = tok), SIMPLIFY = TRUE)
+    tok <- trimws(input$token)
+    withProgress(message = "Pinging sites…", {
+      lines <- mapply(ping_one, urls, idx = seq_along(urls),
+                      MoreArgs = list(token = tok), SIMPLIFY = TRUE)
+    })
     output$ping_out <- renderText(paste(lines, collapse = "\n"))
   })
 
-  # ---- Validate ---------------------------------------------------
+  # ---- Validate data --------------------------------------------
   observeEvent(input$btn_validate, {
     urls <- get_urls(input$urls)
     if (!length(urls)) {
-      showNotification("Enter site URLs first.", type = "warning")
-      return()
+      showNotification("Enter site URLs first.", type = "warning"); return()
     }
-    tok <- input$token
-    ss  <- lapply(urls, function(u) create_remote_server(u, tok))
-    active_servers(ss)
+    if (is.null(rv$meta) || is.null(rv$meta$vars_spec)) {
+      showNotification("Load an analysis script first.", type = "warning"); return()
+    }
+    tok  <- trimws(input$token)
+    ss   <- lapply(urls, function(u) create_remote_server(u, tok))
 
-    withProgress(message = "Validating sites...", {
+    withProgress(message = "Validating sites…", {
       v <- tryCatch(
-        fed_validate(ss, VARS_SPEC, formula = mcid_arm_12m ~ age + sexM, min_n = 20L),
-        error = function(e) list(ok = FALSE, errors = conditionMessage(e),
-                                 warnings = character(0), site_reports = list(),
-                                 heterogeneity = list())
+        fed_validate(ss, rv$meta$vars_spec, formula = NULL, min_n = 20L),
+        error = function(e) list(ok = FALSE,
+          errors = conditionMessage(e), warnings = character(0),
+          site_reports = list(), heterogeneity = list())
       )
     })
 
-    output$val_out <- renderText(cap_print(print_validation_report(v)))
-    updateTabsetPanel(session, "tabs", "Validation")
+    rv$val_txt  <- cap_print(print_validation_report(v))
+    rv$outputs  <- NULL   # clear old results so validation tab shows
 
-    if (v$ok) showNotification("Validation passed. Ready to run analysis.", type = "message")
-    else      showNotification(
-                sprintf("%d error(s) found — review the Validation tab.",
-                        length(v$errors)), type = "error", duration = 8)
+    if (v$ok)
+      showNotification("Validation passed. Ready to run analysis.",
+                       type = "message")
+    else
+      showNotification(
+        sprintf("%d error(s) found — review the Validation tab.",
+                length(v$errors)), type = "error", duration = 8)
   })
 
-  # ---- Run analysis -----------------------------------------------
+  # ---- Run analysis ---------------------------------------------
   observeEvent(input$btn_run, {
     urls <- get_urls(input$urls)
     if (!length(urls)) {
-      showNotification("Enter site URLs first.", type = "warning")
-      return()
+      showNotification("Enter site URLs first.", type = "warning"); return()
     }
-    tok <- input$token
-    ss  <- lapply(urls, function(u) create_remote_server(u, tok))
-    active_servers(ss)
+    if (is.null(rv$meta)) {
+      showNotification("Load an analysis script first.", type = "warning"); return()
+    }
+    tok    <- trimws(input$token)
+    ss     <- lapply(urls, function(u) create_remote_server(u, tok))
+    script <- input$script_file$datapath
 
-    withProgress(message = "Running federated analysis...", value = 0, {
+    withProgress(
+      message = paste("Running:", rv$meta$title), value = 0, {
 
-      # Validation (always runs first; blocks on error)
-      incProgress(0.05, detail = "Validating")
-      v <- tryCatch(
-        fed_validate(ss, VARS_SPEC, formula = mcid_arm_12m ~ age + sexM, min_n = 20L),
-        error = function(e) list(ok = FALSE, errors = conditionMessage(e),
-                                 warnings = character(0), site_reports = list(),
-                                 heterogeneity = list())
-      )
-      output$val_out <- renderText(cap_print(print_validation_report(v)))
-      if (!v$ok) {
-        showNotification("Validation failed — check the Validation tab.",
-                         type = "error", duration = 10)
-        updateTabsetPanel(session, "tabs", "Validation")
-        return()
-      }
+      incProgress(0.05, detail = "Preparing…")
+      clear_outputs()
+      env         <- new.env(parent = globalenv())
+      env$servers <- ss
 
-      # ---- Descriptive statistics ---------------------------------
-      incProgress(0.15, detail = "Descriptive statistics")
-
-      age_s  <- fed_numeric(ss, "age")
-      bmi_s  <- fed_numeric(ss, "bmi")
-      nrsp_s <- fed_numeric(ss, "nrs_arm_preop")
-      nrs12  <- fed_numeric(ss, "nrs_arm_12m")
-      mcid_s <- fed_numeric(ss, "mcid_arm_12m")
-
-      output$tbl_desc <- renderTable({
-        data.frame(
-          Variable = c("Age (years)", "BMI (kg/m²)",
-                       "NRS arm pre-op (0–10)",
-                       "NRS arm 12 months (0–10)",
-                       "MCID arm 12 months"),
-          N    = c(age_s$n, bmi_s$n, nrsp_s$n, nrs12$n, mcid_s$n),
-          Mean = c(sprintf("%.1f", age_s$mean),  sprintf("%.1f", bmi_s$mean),
-                   sprintf("%.2f", nrsp_s$mean), sprintf("%.2f", nrs12$mean),
-                   sprintf("%.1f%%", 100 * mcid_s$mean)),
-          SD   = c(sprintf("%.1f", age_s$sd),  sprintf("%.1f", bmi_s$sd),
-                   sprintf("%.2f", nrsp_s$sd), sprintf("%.2f", nrs12$sd), ""),
-          stringsAsFactors = FALSE
-        )
-      }, striped = TRUE, hover = TRUE)
-
-      # ---- Welch t-test -------------------------------------------
-      incProgress(0.25, detail = "Group comparisons")
-
-      tt <- tryCatch(
-        fed_welch_t(ss, "age", "diag_grp", "radiculopathy", "myelopathy"),
-        error = function(e) NULL
-      )
-      if (!is.null(tt)) {
-        output$tbl_ttest <- renderTable({
-          data.frame(
-            Group    = c("Radiculopathy", "Myelopathy"),
-            N        = c(tt$n1, tt$n2),
-            `Mean age` = sprintf("%.2f", c(tt$mean1, tt$mean2)),
-            SD         = sprintf("%.2f", c(tt$sd1, tt$sd2)),
-            `t (df)`   = c(sprintf("%.3f (%.1f)", tt$t, tt$df), ""),
-            p          = c(fmt_p(tt$p), ""),
-            check.names = FALSE, stringsAsFactors = FALSE
-          )
-        }, striped = TRUE)
-      }
-
-      # ---- Chi-square ---------------------------------------------
-      chi <- tryCatch(
-        fed_chisq_2x2(ss, "sexM", "diag_myelo"),
-        error = function(e) NULL
-      )
-      if (!is.null(chi)) {
-        output$tbl_chisq <- renderTable({
-          tbl <- chi$table
-          df_out <- as.data.frame.matrix(tbl)
-          colnames(df_out) <- c("Radiculopathy", "Myelopathy")
-          cbind(Sex = c("Female (sexM=0)", "Male (sexM=1)"), df_out)
-        }, striped = TRUE, rownames = FALSE)
-        output$txt_chisq_info <- renderText(
-          sprintf("X² = %.3f   df = %d   p = %s   N = %d",
-                  chi$statistic, chi$df, fmt_p(chi$p), chi$N)
-        )
-      }
-
-      # ---- Linear regression --------------------------------------
-      incProgress(0.45, detail = "Linear regression")
-
-      lm_fit <- tryCatch(
-        fed_lm(ss, nrs_arm_12m ~ age + sexM),
-        error = function(e) NULL
-      )
-      if (!is.null(lm_fit)) {
-        output$tbl_lm <- renderTable({
-          data.frame(
-            Term           = names(lm_fit$coefficients),
-            Estimate       = round(lm_fit$coefficients, 4),
-            `Std. Error`   = round(lm_fit$se, 4),
-            `t value`      = round(lm_fit$t, 3),
-            `p value`      = sapply(lm_fit$p, fmt_p),
-            check.names = FALSE, stringsAsFactors = FALSE
-          )
-        }, striped = TRUE)
-        output$txt_lm_info <- renderText(
-          sprintf("N = %d   Residual SE = %.4f   df = %d",
-                  lm_fit$N, lm_fit$sigma, lm_fit$df)
-        )
-      }
-
-      # ---- Logistic regression ------------------------------------
-      incProgress(0.70, detail = "Logistic regression")
-
-      logit <- tryCatch(
-        fed_logistic_newton(ss, mcid_arm_12m ~ age + sexM,
-                            robust_cluster = TRUE, verbose = FALSE),
-        error = function(e) NULL
-      )
-      if (!is.null(logit)) {
-        se_use <- if (!is.null(logit$se_robust)) logit$se_robust else logit$se
-        beta   <- logit$coefficients
-        z_vals <- beta / se_use
-        p_vals <- 2 * (1 - pnorm(abs(z_vals)))
-        lo     <- exp(beta - 1.96 * se_use)
-        hi     <- exp(beta + 1.96 * se_use)
-
-        output$tbl_logit <- renderTable({
-          data.frame(
-            Term          = names(beta),
-            `log OR`      = round(beta, 4),
-            `Std. Error`  = round(se_use, 4),
-            `z value`     = round(z_vals, 3),
-            `p value`     = sapply(p_vals, fmt_p),
-            OR            = round(exp(beta), 3),
-            `95% CI`      = sprintf("[%.3f, %.3f]", lo, hi),
-            check.names = FALSE, stringsAsFactors = FALSE
-          )
-        }, striped = TRUE)
-
-        se_label <- if (!is.null(logit$se_robust))
-          sprintf("cluster-robust SE (k = %d sites)", logit$clusters)
-        else "standard SE"
-        output$txt_logit_info <- renderText(
-          sprintf("N = %d   log-lik = %.3f   iterations = %d   converged = %s   %s",
-                  logit$N, logit$logLik, logit$iterations, logit$converged, se_label)
-        )
-
-        # Forest plot — non-intercept terms only
-        noint <- names(beta)[names(beta) != "(Intercept)"]
-        if (length(noint) > 0) {
-          b_ni  <- beta[noint]
-          se_ni <- se_use[noint]
-          or_ni <- exp(b_ni)
-          lo_ni <- exp(b_ni - 1.96 * se_ni)
-          hi_ni <- exp(b_ni + 1.96 * se_ni)
-          k     <- length(noint)
-
-          output$forest <- renderPlot({
-            label_x <- max(hi_ni) * 1.6   # right side for OR annotations
-            xlim    <- c(min(lo_ni) * 0.7, label_x * 1.05)
-            par(mar = c(4, 7, 3, 1))
-            plot(or_ni, seq_len(k),
-                 xlim = xlim, ylim = c(0.5, k + 0.5),
-                 xlab = "Odds Ratio (95% CI)", ylab = "",
-                 yaxt = "n", pch = 15, cex = 1.6, col = "#2b6cb0",
-                 main = "Forest plot — MCID achieved at 12 months")
-            abline(v = 1, lty = 2, col = "grey60")
-            for (j in seq_len(k)) {
-              lines(c(lo_ni[j], hi_ni[j]), c(j, j), lwd = 2.5, col = "#2b6cb0")
-              text(label_x, j,
-                   labels = sprintf("OR %.3f  [%.3f–%.3f]  p%s",
-                                    or_ni[j], lo_ni[j], hi_ni[j],
-                                    fmt_p(p_vals[noint[j]])),
-                   adj = 1, cex = 0.82, col = "#333")
-            }
-            axis(2, at = seq_len(k), labels = noint, las = 1)
-          })
+      incProgress(0.10, detail = "Sourcing analysis script…")
+      tryCatch(
+        source(script, local = env),
+        error = function(e) {
+          showNotification(paste("Script error:", conditionMessage(e)),
+                           type = "error", duration = 15)
         }
-      }
+      )
 
       incProgress(1, detail = "Done")
     })
 
-    updateTabsetPanel(session, "tabs", "Descriptives")
-    showNotification("Analysis complete.", type = "message")
+    result <- get_outputs()
+    if (length(result) == 0) {
+      showNotification(
+        "No outputs were registered. Check the script calls register_output().",
+        type = "warning")
+    } else {
+      rv$outputs <- result
+      showNotification(
+        sprintf("Done — %d output(s) ready.", length(result)),
+        type = "message")
+    }
   })
+
+  # ---- Main panel -----------------------------------------------
+  output$results_panel <- renderUI({
+
+    # No script loaded: welcome screen
+    if (is.null(rv$meta)) {
+      return(div(class = "welcome",
+        h3("Federated Analysis Coordinator"),
+        br(),
+        p("① Load an analysis script  (.R file that follows the contract)"),
+        p("② Enter the site URLs"),
+        p("③ Ping → Validate → Run Analysis")
+      ))
+    }
+
+    # Build tab list: always include Status tab, add output tabs if available
+    all_tabs <- list()
+
+    # Status tab: shows validation output or a ready-prompt
+    status_body <- if (!is.null(rv$val_txt)) {
+      tagList(h5("Validation report"), verbatimTextOutput("val_display"))
+    } else if (is.null(rv$outputs)) {
+      div(class = "welcome",
+          h4(rv$meta$title),
+          p("Script loaded. Click Validate or Run Analysis."))
+    } else {
+      div(class = "welcome",
+          p("Analysis complete. See output tabs above."))
+    }
+    all_tabs[[1]] <- tabPanel("Status", br(), status_body)
+
+    # Dynamic output tabs
+    if (!is.null(rv$outputs)) {
+      for (i in seq_along(rv$outputs)) {
+        out <- rv$outputs[[i]]
+        id  <- paste0("dyn_", i)
+        inner <- switch(out$type,
+          "table" = tableOutput(id),
+          "plot"  = plotOutput(id, height = "440px"),
+          "text"  = verbatimTextOutput(id)
+        )
+        all_tabs[[length(all_tabs) + 1L]] <- tabPanel(
+          out$name,
+          br(),
+          inner,
+          if (!is.null(out$caption))
+            div(class = "tbl-caption", out$caption)
+        )
+      }
+    }
+
+    do.call(tabsetPanel, c(list(id = "dyn_tabs"), all_tabs))
+  })
+
+  # val_display is always registered; shown inside the Status tab
+  output$val_display <- renderText({
+    if (is.null(rv$val_txt)) "" else rv$val_txt
+  })
+
+  # ---- Register a renderer for every dynamic output ---------------
+  # Fires whenever rv$outputs changes (i.e. after Run Analysis).
+  # Uses local() to capture loop variables correctly.
+  observeEvent(rv$outputs, {
+    outputs <- rv$outputs
+    if (is.null(outputs)) return()
+
+    for (i in seq_along(outputs)) {
+      local({
+        out <- outputs[[i]]
+        id  <- paste0("dyn_", i)
+
+        if (out$type == "table") {
+
+          output[[id]] <- renderTable(
+            out$value,
+            striped = TRUE, hover = TRUE, na = ""
+          )
+
+        } else if (out$type == "plot") {
+
+          fn <- out$value   # capture the closure
+          output[[id]] <- renderPlot({
+            if (is.function(fn))        fn()
+            else if (inherits(fn, "ggplot")) print(fn)
+            else { plot.new(); text(0.5, 0.5, "Cannot render plot.", cex = 1.2) }
+          }, height = 440)
+
+        } else {   # "text"
+
+          txt <- out$value
+          output[[id]] <- renderText(
+            if (is.character(txt)) txt
+            else cap_print(print(txt))
+          )
+
+        }
+      })
+    }
+
+    # Switch to the first output tab automatically
+    if (length(outputs) > 0)
+      updateTabsetPanel(session, "dyn_tabs",
+                        selected = outputs[[1]]$name)
+
+  }, ignoreInit = TRUE)
 }
 
 shinyApp(ui, server)
