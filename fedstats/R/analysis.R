@@ -21,6 +21,41 @@ fed_numeric <- function(servers, varname) {
   list(n = n, mean = s / n, sd = sqrt((ss - s^2 / n) / (n - 1)), sum = s)
 }
 
+#' Federated per-group numeric summary
+#'
+#' Returns pooled count, mean, and standard deviation of \code{varname}
+#' separately for every level of \code{groupvar}, by collecting per-group
+#' sufficient statistics (n, sum, sum-of-squares) from each site.
+#'
+#' @param servers List of server objects (in-process or remote).
+#' @param varname Character. Numeric variable to summarise.
+#' @param groupvar Character. Grouping variable (any type; converted to character).
+#'
+#' @return A named list keyed by group level. Each entry is a list with
+#'   \code{n}, \code{mean}, \code{sd}, \code{sum}.
+#'
+#' @export
+fed_group_numeric <- function(servers, varname, groupvar) {
+  # Collect per-site, per-group sufficient statistics
+  site_stats <- lapply(servers, function(srv)
+    srv$group_summaries(varname, groupvar)$stats)
+
+  # Union of all group levels seen across sites
+  all_levels <- sort(unique(unlist(lapply(site_stats, names))))
+
+  # Pool across sites for each level
+  lapply(stats::setNames(all_levels, all_levels), function(lv) {
+    n  <- 0; s <- 0; ss <- 0
+    for (sg in site_stats) {
+      g <- sg[[lv]]
+      if (!is.null(g)) { n <- n + g$n; s <- s + g$sum; ss <- ss + g$sumsq }
+    }
+    list(n = n, mean = if (n > 0) s / n else NA_real_,
+         sd  = if (n > 1) sqrt((ss - s^2 / n) / (n - 1)) else NA_real_,
+         sum = s)
+  })
+}
+
 #' Federated Welch t-test
 #'
 #' Tests whether the mean of \code{varname} differs between two levels of
