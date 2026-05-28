@@ -1,0 +1,24 @@
+Package: fedstats
+Type: Package
+Title: Federated Statistics for Multi-Registry Research
+Version: 0.1.0
+Authors@R: person("Victor Staartjes Lab", role = c("aut", "cre"),
+    email = "fedstats@example.com")
+Description: Coordinator-side functions for privacy-preserving federated
+    analyses across hospital registries. Site servers expose only aggregate
+    statistics via HTTP (plumber); this package provides the client
+    functions for collecting and combining those aggregates without moving
+    individual patient data. Includes in-process site simulation, remote
+    HTTP clients, federated linear and logistic regression, descriptive
+    statistics, cross-site heterogeneity checks, and an output-registration
+    system for building generic analysis scripts.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    httr,
+    jsonlite
+Suggests:
+    shiny,
+    devtools,
+    roxygen2
+RoxygenNote: 7.3.3

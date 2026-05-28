@@ -10,10 +10,8 @@
 
 suppressPackageStartupMessages({
   library(readxl)
+  library(fedstats)   # replaces source("server.R") + source("client.R")
 })
-
-source("server.R")
-source("client.R")
 
 MODE      <- Sys.getenv("FED_MODE", "local")
 MIN_SITE_N <- 20

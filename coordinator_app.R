@@ -14,10 +14,8 @@ suppressPackageStartupMessages({
   library(shiny)
   library(httr)
   library(jsonlite)
+  library(fedstats)
 })
-
-source("server.R")
-source("client.R")
 
 VARS_SPEC <- list(
   age           = list(type = "numeric",     min = 18,  max = 100),
@@ -69,6 +67,21 @@ ping_one <- function(url, token, idx) {
 }
 
 # ---------------------------------------------------------------
+# Detect coordinator's own Tailscale IP for the URL placeholder
+# ---------------------------------------------------------------
+.ts_ip <- tryCatch({
+  cmd <- if (.Platform$OS.type == "windows") "tailscale ip -4" else "tailscale ip -4 2>/dev/null"
+  ip  <- trimws(system(cmd, intern = TRUE, ignore.stderr = TRUE))
+  if (length(ip) > 0 && nzchar(ip[1])) ip[1] else ""
+}, error = function(e) "")
+
+.url_placeholder <- if (nzchar(.ts_ip)) {
+  sprintf("http://100.x.x.x:8000\nhttp://100.x.x.x:8001\n\n(Your Tailscale IP: %s)", .ts_ip)
+} else {
+  "http://100.x.x.x:8000\nhttp://100.x.x.x:8001"
+}
+
+# ---------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------
 ui <- fluidPage(
@@ -91,7 +104,7 @@ ui <- fluidPage(
 
       div(class = "step", "① Site URLs"),
       textAreaInput("urls", NULL,
-        placeholder = "http://100.x.x.x:8000\nhttp://100.x.x.x:8001",
+        placeholder = .url_placeholder,
         rows = 5, width = "100%"),
 
       div(class = "step", "② Security token"),
