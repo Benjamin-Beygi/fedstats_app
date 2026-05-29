@@ -99,21 +99,31 @@ ping_one <- function(url, token, idx) {
 # ---------------------------------------------------------------
 ui <- fluidPage(
   tags$head(tags$style(HTML("
+    /* ── Karolinska colour palette ─────────────────────────────── */
     body  { font-family: 'Helvetica Neue', Arial, sans-serif; }
+    .well { background-color: #f8f0fd; border-color: #e9d5ff; }
+    h2    { color: #6A0DAD; }
     .step { font-weight: bold; font-size: 0.88em; margin: 14px 0 2px 0;
-            color: #2b6cb0; }
+            color: #6A0DAD; }
     .meta-title { font-size: 1.0em; font-weight: bold; color: #2d3748;
                   margin: 4px 0 1px 0; }
-    .meta-vars  { font-size: 0.78em; color: #555; margin-bottom: 4px;
+    .meta-vars  { font-size: 0.78em; color: #718096; margin-bottom: 4px;
                   word-break: break-word; }
-    pre  { font-size: 0.80em; background: #f8f9fa; border: 1px solid #dee2e6;
+    pre  { font-size: 0.80em; background: #f7f0fc; border: 1px solid #d8b4fe;
            border-radius: 4px; padding: 10px; white-space: pre-wrap;
            max-height: 480px; overflow-y: auto; }
-    .tbl-caption { font-size: 0.82em; color: #555; font-style: italic;
+    .tbl-caption { font-size: 0.82em; color: #718096; font-style: italic;
                    margin: 4px 0 14px 0; }
     .welcome { color: #718096; padding: 60px 20px; text-align: center; }
-    .welcome h3 { color: #4a5568; }
-    .note { font-size: 0.80em; color: #666; margin-top: 10px; }
+    .welcome h3 { color: #6A0DAD; }
+    .note { font-size: 0.80em; color: #718096; margin-top: 10px; }
+    .btn-primary,
+    .btn-primary:active,
+    .btn-primary.active { background-color: #6A0DAD !important;
+                          border-color: #5a0a91 !important; }
+    .btn-primary:hover,
+    .btn-primary:focus  { background-color: #5a0a91 !important;
+                          border-color: #4a0080 !important; }
   "))),
 
   uiOutput("app_title_ui"),
@@ -168,9 +178,10 @@ ui <- fluidPage(
 server <- function(input, output, session) {
 
   rv <- reactiveValues(
-    meta     = NULL,   # list(title, vars_spec)
-    outputs  = NULL,   # list of register_output() entries
-    val_txt  = NULL    # text from standalone Validate
+    meta        = NULL,   # list(title, vars_spec)
+    outputs     = NULL,   # list of register_output() entries
+    val_txt     = NULL,   # text from standalone Validate
+    console_log = NULL    # captured cat()/print() output from analysis script
   )
 
   # ---- Dynamic app title from script ----------------------------
@@ -189,8 +200,9 @@ server <- function(input, output, session) {
         showNotification(paste("Could not read script:", e$message),
                          type = "error"); NULL
       })
-    rv$outputs <- NULL
-    rv$val_txt <- NULL
+    rv$outputs     <- NULL
+    rv$val_txt     <- NULL
+    rv$console_log <- NULL
   })
 
   output$script_meta_ui <- renderUI({
@@ -275,13 +287,15 @@ server <- function(input, output, session) {
       env$servers <- ss
 
       incProgress(0.10, detail = "Sourcing analysis script…")
-      tryCatch(
-        source(script, local = env),
+      captured <- tryCatch(
+        capture.output(source(script, local = env)),
         error = function(e) {
           showNotification(paste("Script error:", conditionMessage(e)),
                            type = "error", duration = 15)
+          character(0)
         }
       )
+      rv$console_log <- if (length(captured)) paste(captured, collapse = "\n") else ""
 
       incProgress(1, detail = "Done")
     })
@@ -349,12 +363,27 @@ server <- function(input, output, session) {
       }
     }
 
+    # Console tab: cat()/print() output captured from the analysis script
+    if (!is.null(rv$console_log)) {
+      all_tabs[[length(all_tabs) + 1L]] <- tabPanel(
+        "Console",
+        br(),
+        verbatimTextOutput("console_out")
+      )
+    }
+
     do.call(tabsetPanel, c(list(id = "dyn_tabs"), all_tabs))
   })
 
   # val_display is always registered; shown inside the Status tab
   output$val_display <- renderText({
     if (is.null(rv$val_txt)) "" else rv$val_txt
+  })
+
+  # console_out: captured cat()/print() from the analysis script
+  output$console_out <- renderText({
+    log <- rv$console_log
+    if (is.null(log) || !nzchar(log)) "(no printed output)" else log
   })
 
   # ---- Register a renderer for every dynamic output ---------------

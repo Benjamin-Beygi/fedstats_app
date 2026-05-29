@@ -41,30 +41,38 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------
 ui <- fluidPage(
   tags$head(tags$style(HTML("
+    /* ── Karolinska colour palette ─────────────────────────────── */
     body { font-family:'Helvetica Neue',Arial,sans-serif;
            max-width:860px; margin:0 auto; padding:24px; }
-    h3   { margin-bottom:0; }
+    h3   { margin-bottom:0; color:#6A0DAD; }
     .bdg { display:inline-block; padding:3px 12px; border-radius:10px;
            font-size:.82em; font-weight:bold; margin-left:10px; vertical-align:middle; }
     .bdg-stopped  { background:#fed7d7; color:#9b2c2c; }
     .bdg-starting { background:#fefcbf; color:#744210; }
-    .bdg-running  { background:#c6f6d5; color:#22543d; }
-    .addr { background:#ebf8ff; border:1px solid #90cdf4; border-radius:6px;
+    .bdg-running  { background:#e9d5ff; color:#4a0080; }
+    .addr { background:#f3e8ff; border:1px solid #c084fc; border-radius:6px;
             padding:10px 16px; margin:12px 0; }
-    .addr-lbl { font-size:.75em; font-weight:bold; color:#2b6cb0;
+    .addr-lbl { font-size:.75em; font-weight:bold; color:#6A0DAD;
                 text-transform:uppercase; letter-spacing:.05em; }
-    .addr-url { font-family:monospace; font-size:1.18em; color:#1a365d;
+    .addr-url { font-family:monospace; font-size:1.18em; color:#4a0080;
                 font-weight:bold; margin-top:3px; }
     .privacy  { background:#f0fff4; border-left:3px solid #38a169;
                 padding:8px 12px; margin:12px 0; font-size:.83em; color:#276749; }
     .warn-box { background:#fff5f5; border-left:3px solid #fc8181;
                 padding:8px 12px; margin:12px 0; font-size:.83em; color:#c53030; }
-    .sec-lbl  { font-weight:bold; font-size:.8em; color:#4a5568;
+    .sec-lbl  { font-weight:bold; font-size:.8em; color:#6A0DAD;
                 text-transform:uppercase; letter-spacing:.05em; margin:18px 0 6px 0; }
     #server_log { height:280px; overflow-y:auto; background:#1a202c; color:#e2e8f0;
                   font-family:monospace; font-size:.76em; border-radius:6px;
                   padding:10px 14px; white-space:pre-wrap; border:none; }
     hr { border-color:#e2e8f0; margin:16px 0; }
+    .btn-primary,
+    .btn-primary:active,
+    .btn-primary.active { background-color: #6A0DAD !important;
+                          border-color: #5a0a91 !important; }
+    .btn-primary:hover,
+    .btn-primary:focus  { background-color: #5a0a91 !important;
+                          border-color: #4a0080 !important; }
   "))),
 
   tags$script(HTML("
@@ -205,7 +213,7 @@ server <- function(input, output, session) {
   output$action_btn_ui <- renderUI({
     if (rv$status == "stopped") {
       actionButton("btn_start", "Start Server",
-                   class = "btn btn-success",
+                   class = "btn btn-primary",
                    style = "min-width:140px; font-size:1em;")
     } else {
       actionButton("btn_stop", "Stop Server",

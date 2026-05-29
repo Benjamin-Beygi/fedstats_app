@@ -250,6 +250,18 @@ desc_tab <- data.frame(
 register_output("Table 1 — Baseline", desc_tab, "table",
                 "Baseline characteristics — pooled across all sites")
 
+cat(sprintf("  Age:          %.1f years  (SD %.1f)  n = %d\n",
+            .s_age$mean, .s_age$sd, .s_age$n))
+cat(sprintf("  BMI:          %.1f kg/m²  (SD %.1f)\n",
+            .s_bmi$mean, .s_bmi$sd))
+cat(sprintf("  Male sex:     %.0f / %d  (%.0f%%)\n",
+            .s_sexM$sum, .s_sexM$n, 100 * .s_sexM$mean))
+cat(sprintf("  Smoker:       %.0f / %d  (%.0f%%)\n",
+            .s_smoker$sum, .s_smoker$n, 100 * .s_smoker$mean))
+cat(sprintf("  NRS arm preop:  %.1f  (SD %.1f)\n", .s_nrs_arm$mean, .s_nrs_arm$sd))
+cat(sprintf("  EQ-5D preop:    %.2f  (SD %.2f)\n", .s_eq5d$mean,    .s_eq5d$sd))
+cat(sprintf("  NDI preop:      %.1f  (SD %.1f)\n", .s_ndi$mean,     .s_ndi$sd))
+
 # =====================================================================
 # 3.  12-month outcome summary
 # =====================================================================
@@ -307,6 +319,17 @@ outcome_tab <- data.frame(
 register_output("Table 2 — 12-month outcomes", outcome_tab, "table",
                 "12-month outcome measures — pooled across all sites")
 
+cat(sprintf("  NRS arm 12m:     %.1f  (SD %.1f)  n = %d\n",
+            .s_nrs12$mean, .s_nrs12$sd, .s_nrs12$n))
+cat(sprintf("  EQ-5D 12m:       %.2f  (SD %.2f)\n", .s_eq5d12$mean, .s_eq5d12$sd))
+cat(sprintf("  NDI 12m:         %.1f  (SD %.1f)\n", .s_ndi12$mean,  .s_ndi12$sd))
+cat(sprintf("  Patient satisfied: %.0f / %d  (%.0f%%)\n",
+            .s_sat12$sum, .s_sat12$n, 100 * .s_sat12$mean))
+cat(sprintf("  MCID arm (12m):  %.0f / %d  (%.0f%%)\n",
+            .s_mcid_arm$sum, .s_mcid_arm$n, 100 * .s_mcid_arm$mean))
+cat(sprintf("  MCID EQ-5D (12m): %.0f / %d  (%.0f%%)\n",
+            .s_mcid_eq5d$sum, .s_mcid_eq5d$n, 100 * .s_mcid_eq5d$mean))
+
 # =====================================================================
 # 4.  Welch t-tests: outcomes by diagnosis
 # =====================================================================
@@ -342,6 +365,16 @@ ttest_rows <- lapply(.ttests, function(item) {
 ttest_tab <- do.call(rbind, ttest_rows)
 register_output("Table 3 — By diagnosis", ttest_tab, "table",
                 "Welch t-test comparison of continuous outcomes by diagnosis group")
+
+for (.i in seq_len(nrow(ttest_tab))) {
+  .r <- ttest_tab[.i, ]
+  .sig <- if (.r$p < 0.001) "***" else if (.r$p < 0.01) "** " else if (.r$p < 0.05) "*  " else "   "
+  cat(sprintf("  %-22s  Rad: %s  |  Mye: %s  |  p = %.4f %s\n",
+              .r$Outcome,
+              .r[["Radiculopathy (mean±SD)"]],
+              .r[["Myelopathy (mean±SD)"]],
+              .r$p, .sig))
+}
 
 # =====================================================================
 # 5.  Chi-square tests: binary outcomes by diagnosis
@@ -383,6 +416,15 @@ chisq_tab <- do.call(rbind, chisq_rows)
 register_output("Table 4 — Chi-square", chisq_tab, "table",
                 "Chi-square (Yates correction): binary variables by diagnosis group")
 
+for (.i in seq_len(nrow(chisq_tab))) {
+  .r <- chisq_tab[.i, ]
+  if (!is.na(.r$p)) {
+    .sig <- if (.r$p < 0.001) "***" else if (.r$p < 0.01) "** " else if (.r$p < 0.05) "*  " else "   "
+    cat(sprintf("  %-30s  X²(%.0f) = %6.3f  p = %.4f %s\n",
+                .r$Variable, .r$df, .r$X2, .r$p, .sig))
+  }
+}
+
 # =====================================================================
 # 6.  Linear regression: 12-month NRS arm improvement
 # =====================================================================
@@ -405,8 +447,15 @@ lm_tab <- data.frame(
 )
 rownames(lm_tab) <- NULL
 
-cat(sprintf("N = %d | Residual SE = %.4f | df = %d\n",
+cat(sprintf("  N = %d  |  Residual SE = %.3f  |  df = %d\n",
             lm_full$N, lm_full$sigma, lm_full$df))
+cat("  Key predictors (Estimate, p):\n")
+for (.v in c("nrs_arm_preop", "diag_myelo", "age", "sexM")) {
+  .row <- lm_tab[lm_tab$Term == .v, ]
+  if (nrow(.row) == 1)
+    cat(sprintf("    %-22s  β = %+.3f  (SE %.3f)  p = %.4f\n",
+                .v, .row$Estimate, .row$Std.Error, .row$p.value))
+}
 
 register_output("Table 5 — Linear regression", lm_tab, "table",
                 sprintf(
@@ -445,6 +494,16 @@ logit_sat_tab <- data.frame(
   stringsAsFactors = FALSE
 )
 rownames(logit_sat_tab) <- NULL
+
+cat(sprintf("  N = %d  |  log-likelihood = %.1f  |  converged: %s\n",
+            logit_sat$N, logit_sat$logLik, logit_sat$converged))
+cat("  Key predictors (OR [95% CI], p):\n")
+for (.v in c("nrs_arm_12m", "nrs_arm_preop", "diag_myelo", "eq5d_index_preop")) {
+  .row <- logit_sat_tab[logit_sat_tab$Term == .v, ]
+  if (nrow(.row) == 1)
+    cat(sprintf("    %-22s  OR = %.2f  [%.2f–%.2f]  p = %.4f\n",
+                .v, .row$OR, .row$CI.lower, .row$CI.upper, .row$p.value))
+}
 
 register_output("Table 6 — Logistic (satisfaction)", logit_sat_tab, "table",
                 sprintf(
@@ -486,6 +545,16 @@ logit_eq5d_tab <- data.frame(
 )
 rownames(logit_eq5d_tab) <- NULL
 
+cat(sprintf("  N = %d  |  log-likelihood = %.1f  |  converged: %s\n",
+            logit_eq5d$N, logit_eq5d$logLik, logit_eq5d$converged))
+cat("  Key predictors (OR [95% CI], p):\n")
+for (.v in c("eq5d_index_preop", "diag_myelo", "age", "smoker")) {
+  .row <- logit_eq5d_tab[logit_eq5d_tab$Term == .v, ]
+  if (nrow(.row) == 1)
+    cat(sprintf("    %-22s  OR = %.2f  [%.2f–%.2f]  p = %.4f\n",
+                .v, .row$OR, .row$CI.lower, .row$CI.upper, .row$p.value))
+}
+
 register_output("Table 7 — Logistic (EQ-5D MCID)", logit_eq5d_tab, "table",
                 sprintf(
                   "Logistic: mcid_eq5d_12m ~ 8 predictors | N = %d, logLik = %.3f",
@@ -511,18 +580,18 @@ register_output(
       plot(.rows$OR, .y_pos,
            xlim = c(.x_lo, .x_hi), ylim = c(0.3, .n + 0.7),
            xlab = "Odds ratio (95% CI)", ylab = "",
-           yaxt = "n", log = "x", pch = 15, cex = 1.4, col = "#2b6cb0",
+           yaxt = "n", log = "x", pch = 15, cex = 1.4, col = "#6A0DAD",
            main = "Patient satisfaction at 12 months")
       for (.i in seq_len(.n))
         lines(c(.rows$CI.lower[.i], .rows$CI.upper[.i]),
-              c(.y_pos[.i], .y_pos[.i]), col = "#2b6cb0", lwd = 2)
+              c(.y_pos[.i], .y_pos[.i]), col = "#6A0DAD", lwd = 2)
       abline(v = 1, lty = 2, col = "grey60")
       axis(2, at = .y_pos, labels = .rows$Term, las = 1, cex.axis = 0.85)
       for (.i in seq_len(.n))
         text(.rows$OR[.i], .y_pos[.i] + 0.38,
              labels = sprintf("%.2f [%.2f–%.2f]",
                               .rows$OR[.i], .rows$CI.lower[.i], .rows$CI.upper[.i]),
-             cex = 0.72, col = "#2b6cb0")
+             cex = 0.72, col = "#4a0080")
     }
   }),
   type    = "plot",
@@ -548,18 +617,18 @@ register_output(
       plot(.rows$OR, .y_pos,
            xlim = c(.x_lo, .x_hi), ylim = c(0.3, .n + 0.7),
            xlab = "Odds ratio (95% CI)", ylab = "",
-           yaxt = "n", log = "x", pch = 15, cex = 1.4, col = "#276749",
+           yaxt = "n", log = "x", pch = 15, cex = 1.4, col = "#FF1493",
            main = "MCID EQ-5D at 12 months")
       for (.i in seq_len(.n))
         lines(c(.rows$CI.lower[.i], .rows$CI.upper[.i]),
-              c(.y_pos[.i], .y_pos[.i]), col = "#276749", lwd = 2)
+              c(.y_pos[.i], .y_pos[.i]), col = "#FF1493", lwd = 2)
       abline(v = 1, lty = 2, col = "grey60")
       axis(2, at = .y_pos, labels = .rows$Term, las = 1, cex.axis = 0.85)
       for (.i in seq_len(.n))
         text(.rows$OR[.i], .y_pos[.i] + 0.38,
              labels = sprintf("%.2f [%.2f–%.2f]",
                               .rows$OR[.i], .rows$CI.lower[.i], .rows$CI.upper[.i]),
-             cex = 0.72, col = "#276749")
+             cex = 0.72, col = "#c0006a")
     }
   }),
   type    = "plot",
