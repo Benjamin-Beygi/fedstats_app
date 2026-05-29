@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 title Federated Statistics — Site Server
 
 :: Go to project root (parent of this windows\ folder)
-cd /d "%~dp0.."
+cd /d "%~dp0..\.."
 
 echo.
 echo  +--------------------------------------------+
@@ -179,7 +179,7 @@ set "FED_DATA_FILE=!DATA_FILE!"
 set "FED_PORT=!PORT!"
 if not "!TOKEN!"=="" set "FED_TOKEN=!TOKEN!"
 
-!RSCRIPT! api_server.R
+!RSCRIPT! engine\site\api_server.R
 
 echo.
 echo   Server stopped.

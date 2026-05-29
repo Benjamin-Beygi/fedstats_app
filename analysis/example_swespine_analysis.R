@@ -1,6 +1,6 @@
-# swespine_full_analysis.R
+# example_swespine_analysis.R
 # =====================================================================
-# Swespine Cervical Registry — Comprehensive Federated Analysis
+# Swespine Cervical Registry — Comprehensive Federated Analysis (Example)
 #
 # This script uses ALL available variables from the full dataset
 # produced by random_dataset_generator.R. It demonstrates the complete

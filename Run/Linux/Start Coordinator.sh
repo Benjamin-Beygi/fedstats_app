@@ -1,7 +1,8 @@
 #!/bin/bash
 # ============================================================
-#   Federated Statistics — Coordinator  (macOS)
-#   Double-click this file in Finder to open the interface.
+#   Federated Statistics — Coordinator  (Linux)
+#   Run:  bash "linux/Start Coordinator.sh"
+#   Or make it executable and double-click in your file manager.
 # ============================================================
 #
 #   What this does:
@@ -10,23 +11,19 @@
 #       then run the federated analysis from the browser window.
 #     • Make sure every site has already started their server
 #       before you click "Run Analysis".
-#
-#   If you see "permission denied" when double-clicking:
-#     Open Terminal, paste this, and press Enter:
-#       chmod +x ~/path/to/mac/Start\ Coordinator.command
 # ============================================================
 
-# Go to project root (parent of this mac/ folder)
+# Go to project root (parent of this linux/ folder)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/.."
+cd "$SCRIPT_DIR/../.."
 
 echo ""
-echo "╔══════════════════════════════════════════════╗"
-echo "║   Federated Statistics — Coordinator         ║"
-echo "╚══════════════════════════════════════════════╝"
+echo "┌──────────────────────────────────────────────┐"
+echo "│   Federated Statistics — Coordinator         │"
+echo "└──────────────────────────────────────────────┘"
 echo ""
 echo "  Before continuing, make sure:"
-echo "    • Tailscale is connected (check the menu bar icon)"
+echo "    • Tailscale is connected  (run: tailscale status)"
 echo "    • All site operators have started their servers and"
 echo "      sent you their addresses (http://100.x.x.x:8000)"
 echo ""
@@ -36,18 +33,22 @@ echo "[ Step 1 of 3 ]  Checking R..."
 
 if ! command -v Rscript &>/dev/null; then
   echo ""
-  echo "  ✗  R is not installed (or not found on your PATH)."
+  echo "  ✗  R is not installed."
   echo ""
-  echo "     Install R in one of two ways:"
-  echo "       Option 1 — Homebrew (if installed):  brew install r"
-  echo "       Option 2 — Download the installer from CRAN:"
-  echo "                  https://cran.r-project.org/bin/macosx/"
+  echo "     Install R on Ubuntu/Debian:"
+  echo "       sudo apt update && sudo apt install -y r-base r-base-dev"
   echo ""
-  read -rp "  Press Enter to open the download page in your browser..."
-  open "https://cran.r-project.org/bin/macosx/"
-  echo "  After installing R, close this window and double-click this file again."
-  read -rp "  Press Enter to close..."
-  exit 1
+  read -rp "  Would you like to install R now? (requires sudo) [y/N]: " INSTALL_R
+  if [[ "$INSTALL_R" =~ ^[Yy]$ ]]; then
+    sudo apt update && sudo apt install -y r-base r-base-dev
+    if ! command -v Rscript &>/dev/null; then
+      echo "  ✗  Installation failed. Please install R manually and re-run."
+      exit 1
+    fi
+  else
+    echo "  Please install R and re-run this script."
+    exit 1
+  fi
 fi
 
 echo "  ✓  $(Rscript --version 2>&1 | head -1)"
@@ -60,11 +61,11 @@ Rscript -e "
   pkgs <- c('shiny', 'httr', 'jsonlite')
   need <- pkgs[!pkgs %in% rownames(installed.packages())]
   if (length(need) == 0) {
-    cat('  ✓  All packages already installed.\n')
+    cat('  \U2713  All packages already installed.\n')
   } else {
-    cat('  Installing:', paste(need, collapse = ', '), '— this may take a minute...\n')
+    cat('  Installing:', paste(need, collapse = ', '), '-- this may take a minute...\n')
     install.packages(need, repos = 'https://cloud.r-project.org', quiet = TRUE)
-    cat('  ✓  Done.\n')
+    cat('  \U2713  Done.\n')
   }
 "
 echo ""
@@ -77,7 +78,6 @@ MY_IP=$(tailscale ip -4 2>/dev/null | head -1)
 if [ -n "$MY_IP" ]; then
   echo "  ✓  Tailscale connected.  Your IP: $MY_IP"
 else
-  # Try to start the daemon if it's not running
   if ! tailscale status &>/dev/null 2>&1; then
     echo "  Tailscale daemon is not running — attempting to start it..."
     sudo tailscaled &>/dev/null &
@@ -94,8 +94,8 @@ else
   else
     echo ""
     echo "  ⚠  Could not connect to Tailscale automatically."
-    echo "     Open the Tailscale app and connect manually, then"
-    echo "     close this window and double-click this file again."
+    echo "     Run:  sudo tailscale up"
+    echo "     Then close this terminal and re-run this script."
     echo ""
     read -rp "  Press Enter to continue anyway..."
   fi
@@ -106,18 +106,17 @@ echo ""
 echo "══════════════════════════════════════════════════════"
 echo "  Starting coordinator interface..."
 echo ""
-echo "  Your browser will open automatically in a few seconds."
-echo "  If it doesn't open, look for a URL in the output below"
-echo "  (starts with  http://127.0.0.1:...)  and paste it into"
-echo "  your browser manually."
+echo "  A browser window will open automatically."
+echo "  If it doesn't, look for a URL in the output below"
+echo "  (starts with  http://127.0.0.1:...)  and paste it"
+echo "  into your browser manually."
 echo ""
-echo "  Keep this window open while running the analysis."
-echo "  To stop: close this window or press Ctrl+C."
+echo "  Keep this terminal open while running the analysis."
+echo "  To stop:  press Ctrl+C"
 echo "══════════════════════════════════════════════════════"
 echo ""
 
-Rscript -e "shiny::runApp('coordinator_app.R', launch.browser = TRUE)"
+Rscript -e "shiny::runApp('engine/coordinator/coordinator_app.R', launch.browser = TRUE)"
 
 echo ""
 echo "  Coordinator stopped."
-read -rp "  Press Enter to close this window..."

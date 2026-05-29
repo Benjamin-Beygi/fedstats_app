@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 title Federated Statistics — Coordinator
 
 :: Go to project root (parent of this windows\ folder)
-cd /d "%~dp0.."
+cd /d "%~dp0..\.."
 
 echo.
 echo  +--------------------------------------------+
@@ -102,7 +102,7 @@ echo  ^|  Close this window to stop the coordinator.         ^|
 echo  +------------------------------------------------------+
 echo.
 
-!RSCRIPT! -e "shiny::runApp('coordinator_app.R', launch.browser = TRUE)"
+!RSCRIPT! -e "shiny::runApp('engine/coordinator/coordinator_app.R', launch.browser = TRUE)"
 
 echo.
 echo   Coordinator stopped.

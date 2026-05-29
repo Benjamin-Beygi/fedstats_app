@@ -15,9 +15,8 @@
 suppressPackageStartupMessages({
   library(plumber)
   library(jsonlite)
+  library(fedstats)   # provides create_server()
 })
-
-source("server.R")   # provides create_server()
 
 # ------------------------------------------------------------------
 # Configuration: CLI args override env vars
