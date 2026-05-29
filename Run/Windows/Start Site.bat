@@ -14,8 +14,8 @@ echo   No individual patient records will leave this computer.
 echo   Keep this window open for the duration of the analysis.
 echo.
 
-:: ── Step 1 of 4: Find R ─────────────────────────────────────
-echo [ Step 1 of 4 ]  Checking R...
+:: ── Step 1 of 3: Find R ─────────────────────────────────────
+echo [ Step 1 of 3 ]  Checking R...
 
 set "RSCRIPT="
 where Rscript >nul 2>&1
@@ -58,9 +58,9 @@ for /f "tokens=* usebackq" %%V in (`!RSCRIPT! --version 2^>^&1`) do (
 :r_ver_done
 echo.
 
-:: ── Step 2 of 4: R packages ──────────────────────────────────
-echo [ Step 2 of 4 ]  Checking required R packages (plumber, jsonlite)...
-!RSCRIPT! -e "pkgs<-c('plumber','jsonlite'); need<-pkgs[!pkgs %%in%% rownames(installed.packages())]; if(length(need)==0) cat('  OK  All packages already installed.\n') else { cat('  Installing:',paste(need,collapse=', '),'...\n'); install.packages(need,repos='https://cloud.r-project.org',quiet=TRUE); cat('  OK  Done.\n') }"
+:: ── Step 2 of 3: R packages ──────────────────────────────────
+echo [ Step 2 of 3 ]  Checking required R packages...
+!RSCRIPT! -e "pkgs<-c('shiny','processx','plumber','jsonlite'); need<-pkgs[!pkgs %%in%% rownames(installed.packages())]; if(length(need)==0) cat('  OK  All packages already installed.\n') else { cat('  Installing:',paste(need,collapse=', '),'...\n'); install.packages(need,repos='https://cloud.r-project.org',quiet=TRUE); cat('  OK  Done.\n') }"
 if !errorlevel! neq 0 (
     echo.
     echo   X  Package installation failed.
@@ -69,8 +69,8 @@ if !errorlevel! neq 0 (
 )
 echo.
 
-:: ── Step 3 of 4: Tailscale ───────────────────────────────────
-echo [ Step 3 of 4 ]  Checking Tailscale (secure network connection)...
+:: ── Step 3 of 3: Tailscale ───────────────────────────────────
+echo [ Step 3 of 3 ]  Checking Tailscale (secure network connection)...
 set "TAILSCALE_IP="
 for /f "tokens=* usebackq" %%I in (`tailscale ip -4 2^>nul`) do (
     set "TAILSCALE_IP=%%I" & goto :ts_done
@@ -79,108 +79,30 @@ for /f "tokens=* usebackq" %%I in (`tailscale ip -4 2^>nul`) do (
 
 if not "!TAILSCALE_IP!"=="" (
     echo   OK  Tailscale connected.  Your IP: !TAILSCALE_IP!
-    echo       The coordinator will reach you at:  http://!TAILSCALE_IP!:8000
-    echo.
-    echo   Running a quick network check...
-    tailscale netcheck >nul 2>&1
-    if !errorlevel! equ 0 (
-        echo   OK  Network looks good.
-    ) else (
-        echo   ^!  Network check reported issues.
-        echo       If the coordinator cannot connect, check Windows Firewall
-        echo       settings for the Tailscale app.
-    )
+    echo       Your address will be shown in the browser interface.
 ) else (
     echo.
     echo   ^!  Tailscale is not running or not connected.
-    echo       Please open the Tailscale app, log in, and connect —
-    echo       then close this window and double-click this file again.
+    echo       Open the Tailscale app and connect for remote analysis.
     echo       Download Tailscale:  https://tailscale.com/download
     echo.
-    set /p "CONT=   Press Enter to continue anyway (not recommended)..."
+    set /p "CONT=   Press Enter to continue anyway..."
 )
 echo.
 
-:: ── Step 4 of 4: Configure and start ─────────────────────────
-echo [ Step 4 of 4 ]  Configure your server
+:: ── Launch GUI ───────────────────────────────────────────────
+echo  +------------------------------------------------------+
+echo  ^|  Opening site server interface in your browser...   ^|
+echo  ^|                                                     ^|
+echo  ^|  * Select your data file and configure the server.  ^|
+echo  ^|  * Click 'Start Server' when ready.                 ^|
+echo  ^|  * Keep this window open during the analysis.       ^|
+echo  ^|    Closing it stops the server.                     ^|
+echo  +------------------------------------------------------+
 echo.
 
-:: Find the data CSV
-set "CSV_DIR=."
-set "CSV_COUNT=0"
-if exist "data\" (
-    for %%F in ("data\*.csv") do set /a CSV_COUNT+=1
-    if !CSV_COUNT! gtr 0 set "CSV_DIR=data"
-)
-if !CSV_COUNT! equ 0 (
-    for %%F in ("*.csv") do set /a CSV_COUNT+=1
-)
-
-if !CSV_COUNT! equ 0 (
-    echo   X  No data file (.csv) found in the data\ folder.
-    echo.
-    echo      Copy your registry data file (e.g. my_registry.csv)
-    echo      into the data\ subfolder, then double-click this file again.
-    echo.
-    pause & exit /b 1
-)
-
-set "CSV_NUM=0"
-if !CSV_COUNT! equ 1 (
-    for %%F in ("!CSV_DIR!\*.csv") do (
-        set "DATA_FILE=%%F"
-        echo   Data file:  %%F  ^(only one found — selected automatically^)
-    )
-) else (
-    echo   Several data files were found. Which one should this server use?
-    echo.
-    for %%F in ("!CSV_DIR!\*.csv") do (
-        set /a CSV_NUM+=1
-        echo     !CSV_NUM!^)  %%F
-        set "CSV_!CSV_NUM!=%%F"
-    )
-    echo.
-    set /p "CHOICE=  Enter number [1-!CSV_COUNT!]: "
-    if not defined CSV_!CHOICE! (
-        echo   X  Invalid selection.
-        pause & exit /b 1
-    )
-    call set "DATA_FILE=%%CSV_!CHOICE!%%"
-)
-echo.
-
-set /p "PORT=  Port number (press Enter for default 8000): "
-if "!PORT!"=="" set "PORT=8000"
+!RSCRIPT! -e "shiny::runApp('engine/site/site_app.R', launch.browser = TRUE)"
 
 echo.
-echo   Security token — a shared password between you and the coordinator.
-echo   Both sides must use the same token. Leave blank if not needed.
-set /p "TOKEN=  Security token [Enter for none]: "
-echo.
-
-:: ── Launch ───────────────────────────────────────────────────
-echo  +----------------------------------------------------+
-echo  ^|  Server starting...                               ^|
-echo  ^|                                                   ^|
-echo  ^|  Data file :  !DATA_FILE!
-echo  ^|  Port      :  !PORT!
-if not "!TAILSCALE_IP!"=="" (
-echo  ^|                                                   ^|
-echo  ^|  ** Tell the coordinator your address: **         ^|
-echo  ^|     http://!TAILSCALE_IP!:!PORT!
-)
-echo  ^|                                                   ^|
-echo  ^|  Keep this window open during the analysis.       ^|
-echo  ^|  Close this window to stop the server.            ^|
-echo  +----------------------------------------------------+
-echo.
-
-set "FED_DATA_FILE=!DATA_FILE!"
-set "FED_PORT=!PORT!"
-if not "!TOKEN!"=="" set "FED_TOKEN=!TOKEN!"
-
-!RSCRIPT! engine\site\api_server.R
-
-echo.
-echo   Server stopped.
+echo   Interface closed.
 pause

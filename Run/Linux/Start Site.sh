@@ -26,8 +26,8 @@ echo "  No individual patient records will leave this computer."
 echo "  Keep this terminal open for the duration of the analysis."
 echo ""
 
-# ── Step 1 of 4: Check R ────────────────────────────────────
-echo "[ Step 1 of 4 ]  Checking R..."
+# ── Step 1 of 3: Check R ────────────────────────────────────
+echo "[ Step 1 of 3 ]  Checking R..."
 
 if ! command -v Rscript &>/dev/null; then
   echo ""
@@ -72,11 +72,11 @@ else
 fi
 echo ""
 
-# ── Step 2 of 4: R packages ─────────────────────────────────
-echo "[ Step 2 of 4 ]  Checking required R packages (plumber, jsonlite)..."
+# ── Step 2 of 3: R packages ─────────────────────────────────
+echo "[ Step 2 of 3 ]  Checking required R packages..."
 
 Rscript -e "
-  pkgs <- c('plumber', 'jsonlite')
+  pkgs <- c('shiny', 'processx', 'plumber', 'jsonlite')
   need <- pkgs[!pkgs %in% rownames(installed.packages())]
   if (length(need) == 0) {
     cat('  \U2713  All packages already installed.\n')
@@ -88,8 +88,8 @@ Rscript -e "
 "
 echo ""
 
-# ── Step 3 of 4: Tailscale ──────────────────────────────────
-echo "[ Step 3 of 4 ]  Checking Tailscale (secure network connection)..."
+# ── Step 3 of 3: Tailscale ──────────────────────────────────
+echo "[ Step 3 of 3 ]  Checking Tailscale (secure network connection)..."
 
 TAILSCALE_IP=""
 if command -v tailscale &>/dev/null; then
@@ -98,99 +98,28 @@ fi
 
 if [ -n "$TAILSCALE_IP" ]; then
   echo "  ✓  Tailscale connected.  Your IP: $TAILSCALE_IP"
-  echo "     The coordinator will reach you at:  http://${TAILSCALE_IP}:8000"
-
-  echo ""
-  echo "  Running a quick network check..."
-  netcheck_out=$(tailscale netcheck 2>&1)
-  if echo "$netcheck_out" | grep -qi "UDP.*false\|no UDP"; then
-    echo "  ⚠  UDP traffic appears blocked — Tailscale will use relay servers."
-    echo "     Connections will still work but may be slightly slower."
-    echo "     Allow UDP port 41641 outbound to fix."
-  else
-    echo "  ✓  Network looks good."
-  fi
+  echo "     Your address will be shown in the browser interface."
 else
   echo ""
   echo "  ⚠  Tailscale is not running or not connected."
   echo "     Run:  sudo tailscale up"
   echo "     Or download Tailscale:  https://tailscale.com/download/linux"
   echo ""
-  read -rp "  Press Enter to continue anyway (not recommended)..."
+  read -rp "  Press Enter to continue anyway..."
 fi
 echo ""
 
-# ── Step 4 of 4: Configure and start ────────────────────────
-echo "[ Step 4 of 4 ]  Configure your server"
+# ── Launch GUI ──────────────────────────────────────────────
+echo "════════════════════════════════════════════════════════"
+echo "  Opening site server interface in your browser..."
+echo ""
+echo "  • Select your data file and configure the server."
+echo "  • Click 'Start Server' when ready."
+echo "  • Keep this terminal open — closing it stops the server."
+echo "════════════════════════════════════════════════════════"
 echo ""
 
-# Find the data CSV
-CSV_FILES=()
-if [ -d "data" ]; then
-  for f in data/*.csv; do [ -f "$f" ] && CSV_FILES+=("$f"); done
-fi
-if [ ${#CSV_FILES[@]} -eq 0 ]; then
-  for f in *.csv; do [ -f "$f" ] && CSV_FILES+=("$f"); done
-fi
-
-if [ ${#CSV_FILES[@]} -eq 0 ]; then
-  echo "  ✗  No data file (.csv) found in the data/ folder."
-  echo ""
-  echo "     Copy your registry data file into the data/ subfolder"
-  echo "     and re-run this script."
-  exit 1
-elif [ ${#CSV_FILES[@]} -eq 1 ]; then
-  DATA_FILE="${CSV_FILES[0]}"
-  echo "  Data file:  $DATA_FILE  (only one found — selected automatically)"
-else
-  echo "  Several data files were found. Which one should this server use?"
-  echo ""
-  for i in "${!CSV_FILES[@]}"; do
-    echo "    $((i+1)))  ${CSV_FILES[$i]}"
-  done
-  echo ""
-  while true; do
-    read -rp "  Enter number [1–${#CSV_FILES[@]}]: " CHOICE
-    if [[ "$CHOICE" =~ ^[0-9]+$ ]] && [ "$CHOICE" -ge 1 ] && [ "$CHOICE" -le "${#CSV_FILES[@]}" ]; then
-      DATA_FILE="${CSV_FILES[$((CHOICE-1))]}"
-      break
-    fi
-    echo "  Please enter a number between 1 and ${#CSV_FILES[@]}."
-  done
-fi
-echo ""
-
-read -rp "  Port number (press Enter for default 8000): " PORT
-PORT="${PORT:-8000}"
+Rscript -e "shiny::runApp('engine/site/site_app.R', launch.browser = TRUE)"
 
 echo ""
-echo "  Security token — a shared password between you and the coordinator."
-echo "  Both sides must use the same token. Leave blank if not needed."
-read -rp "  Security token [Enter for none]: " TOKEN
-echo ""
-
-# ── Launch ──────────────────────────────────────────────────
-echo "══════════════════════════════════════════════════════"
-echo "  Server starting..."
-echo ""
-echo "  Data file :  $DATA_FILE"
-echo "  Port      :  $PORT"
-if [ -n "$TAILSCALE_IP" ]; then
-echo ""
-echo "  ★  Tell the coordinator your address:"
-echo "     http://${TAILSCALE_IP}:${PORT}"
-fi
-echo ""
-echo "  Keep this terminal open while the analysis runs."
-echo "  To stop the server:  press Ctrl+C"
-echo "══════════════════════════════════════════════════════"
-echo ""
-
-if [ -n "$TOKEN" ]; then
-  FED_DATA_FILE="$DATA_FILE" FED_PORT="$PORT" FED_TOKEN="$TOKEN" Rscript engine/site/api_server.R
-else
-  FED_DATA_FILE="$DATA_FILE" FED_PORT="$PORT" Rscript engine/site/api_server.R
-fi
-
-echo ""
-echo "  Server stopped."
+echo "  Interface closed."
