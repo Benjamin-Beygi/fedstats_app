@@ -61,12 +61,11 @@ for /f "tokens=* usebackq" %%V in (`!RSCRIPT! --version 2^>^&1`) do (
 echo.
 
 :: ── Step 2 of 3: R packages ──────────────────────────────────
-echo [ Step 2 of 3 ]  Checking required R packages (shiny, httr, jsonlite)...
-!RSCRIPT! -e "pkgs<-c('shiny','httr','jsonlite'); need<-pkgs[!pkgs %%in%% rownames(installed.packages())]; if(length(need)==0) cat('  OK  All packages already installed.\n') else { cat('  Installing:',paste(need,collapse=', '),'...\n'); install.packages(need,repos='https://cloud.r-project.org',quiet=TRUE); cat('  OK  Done.\n') }"
+echo [ Step 2 of 3 ]  Checking required R packages...
+!RSCRIPT! engine\setup.R coordinator
 if !errorlevel! neq 0 (
     echo.
-    echo   X  Package installation failed.
-    echo      Check your internet connection and try again.
+    echo   X  Package setup failed. See errors above.
     pause & exit /b 1
 )
 echo.

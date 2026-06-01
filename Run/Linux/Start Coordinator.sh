@@ -55,19 +55,15 @@ echo "  ✓  $(Rscript --version 2>&1 | head -1)"
 echo ""
 
 # ── Step 2 of 3: R packages ─────────────────────────────────
-echo "[ Step 2 of 3 ]  Checking required R packages (shiny, httr, jsonlite)..."
+echo "[ Step 2 of 3 ]  Checking required R packages..."
 
-Rscript -e "
-  pkgs <- c('shiny', 'httr', 'jsonlite')
-  need <- pkgs[!pkgs %in% rownames(installed.packages())]
-  if (length(need) == 0) {
-    cat('  \U2713  All packages already installed.\n')
-  } else {
-    cat('  Installing:', paste(need, collapse = ', '), '-- this may take a minute...\n')
-    install.packages(need, repos = 'https://cloud.r-project.org', quiet = TRUE)
-    cat('  \U2713  Done.\n')
-  }
-"
+Rscript engine/setup.R coordinator
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "  ✗  Package setup failed. See errors above."
+  read -rp "  Press Enter to close..."
+  exit 1
+fi
 echo ""
 
 # ── Step 3 of 3: Tailscale ──────────────────────────────────

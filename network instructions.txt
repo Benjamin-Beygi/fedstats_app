@@ -1,0 +1,160 @@
+=====================================================
+1. TAILSCALE NETWORK SETUP
+=====================================================
+
+Each computer logs into Tailscale with their own created account.
+
+Coordinator:
+1. Create the Tailscale tailnet.
+2. Invite the computers as user by their account email from the Tailscale webpage.
+3. Wait for the users to accept and connect.
+4. Approve users.
+
+Distributed computer:
+1. Install Tailscale:
+   https://tailscale.com/download
+2. Accept the invitation link from the coordinator.
+3. Log in to Tailscale.
+
+Linux:
+sudo tailscale up
+
+macOS:
+sudo tailscale up
+
+Windows:
+Open the Tailscale app and log in.
+
+
+tailscale ip -4
+Example:
+100.74.226.3
+
+tailscale netcheck
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+|--------------------------------- OUTDATED ---------------------------------|
+
+=====================================================
+2. INSTALL R
+=====================================================
+
+Linux / Ubuntu:
+sudo apt update
+sudo apt install -y r-base r-base-dev
+
+macOS:
+brew install r
+
+Windows:
+https://cran.r-project.org/bin/windows/base/
+
+
+=====================================================
+3. INSTALL R PACKAGES
+=====================================================
+
+Linux / Ubuntu:
+sudo apt update
+sudo apt install -y libcurl4-openssl-dev libsodium-dev libssl-dev libxml2-dev
+Rscript -e 'install.packages(c("curl","sodium","webutils","plumber","jsonlite","httr2","readxl"), repos="https://cloud.r-project.org")'
+
+macOS:
+Rscript -e 'install.packages(c("plumber","jsonlite","httr2","readxl"), repos="https://cloud.r-project.org")'
+
+Windows PowerShell:
+Rscript -e "install.packages(c('plumber','jsonlite','httr2','readxl'), repos='https://cloud.r-project.org')"
+
+
+No Rscript?
+Get-ChildItem "C:\Program Files\R"
+ 
+Get-ChildItem "C:\Program Files\R\R-4.5.2\bin"
+ 
+$env:Path += ";C:\Program Files\R\R-4.5.0\bin"
+ 
+
+=====================================================
+4. START THE SITE SERVER
+=====================================================
+
+On each distributed computer, put these files in the same folder:
+server.R
+api_server.R
+site CSV file
+
+Example Linux/macOS:
+FED_DATA_FILE=norway.csv \
+FED_PORT=8000 \
+Rscript api_server.R
+
+With token (optional):
+FED_DATA_FILE=norway.csv \
+FED_PORT=8000 \
+FED_TOKEN=swespine2026 \
+Rscript api_server.R
+
+Keep this terminal open!
+
+Expected output:
+Loaded XXXX rows. Listening on port 8000.
+Running plumber API at http://0.0.0.0:8000
+
+
+Windows PowerShell:
+$env:FED_DATA_FILE="norway.csv"
+$env:FED_PORT="8000"
+$env:FED_TOKEN="swespine2026"
+Rscript api_server.R
+
+
+=====================================================
+5. COORDINATOR RUNS THE ANALYSIS
+=====================================================
+
+The coordinator collects the Tailscale IPs from all computers from the tailscale webpage. Example:
+Sweden:  100.74.226.3
+Norway:  100.86.16.91
+Denmark: 100.91.8.22
+Finland: 100.64.55.33
+
+Run:
+FED_MODE=remote \
+FED_SITE_URLS=http://100.74.226.3:8000,http://100.86.16.91:8000,http://100.91.8.22:8000,http://100.64.55.33:8000 \
+Rscript run.R
+
+With token:
+FED_MODE=remote \
+FED_API_TOKEN=swespine2026 \
+FED_SITE_URLS=http://100.74.226.3:8000,http://100.86.16.91:8000,http://100.91.8.22:8000,http://100.64.55.33:8000 \
+Rscript run.R
+
+
+=====================================================
+6. EXPECTED RESULT
+=====================================================
+
+The coordinator should print:
+Descriptive statistics
+Welch t-test
+Chi-square test
+Linear regression
+Logistic regression
+
+
+
+
+
+Shiny app, victor has a server
