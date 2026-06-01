@@ -18,6 +18,7 @@ ANALYSIS_TITLE <- "My First Analysis"
 # Tell the app which variables you will use and what type they are
 # numeric  = a number like age or weight
 # binary   = yes or no, coded as 1 or 0 in the data
+# categorical =	text values (diagnosis group, treatment type, etc)
 VARS_SPEC <- list(
   age  = list(type = "numeric", min = 18, max = 100),
   bmi  = list(type = "numeric", min = 10, max = 80),
@@ -66,8 +67,14 @@ summary_table <- data.frame(
   )
 )
 
+
 # register_output sends the table to a tab in the app
 # arguments: tab name, the data, type, description
+# The available types: 
+#   "table" =	a data.frame	sortable table in the app
+#   "plot"	= a zero-argument function or a ggplot object	rendered chart 
+#   "text"	= a character string
+#
 register_output(
   "Summary",
   summary_table,
