@@ -84,16 +84,11 @@ ui <- fluidPage(
     });
   ")),
 
-  tags$h3("Federated Statistics — Site Server",
+  tags$h3("Federated Site",
           uiOutput("status_badge", inline = TRUE)),
 
   uiOutput("warn_ui"),
   uiOutput("address_ui"),
-
-  div(class = "privacy",
-      "\U0001f512  No individual patient records will leave this computer. ",
-      "Only aggregate statistics (counts, means, model summaries) are shared with the coordinator."
-  ),
 
   hr(),
   div(class = "sec-lbl", "Configuration"),
@@ -101,7 +96,7 @@ ui <- fluidPage(
   fluidRow(
     column(5, uiOutput("file_ui")),
     column(3, numericInput("port", "Port", value = 8000, min = 1, max = 65535, step = 1)),
-    column(4, passwordInput("token", "Security token", placeholder = "(leave blank if none)"))
+    column(4, passwordInput("token", "Token", placeholder = "optional"))
   ),
 
   fluidRow(
@@ -109,7 +104,7 @@ ui <- fluidPage(
   ),
 
   hr(),
-  div(class = "sec-lbl", "Server log"),
+  div(class = "sec-lbl", "Log"),
   verbatimTextOutput("server_log")
 )
 
@@ -159,11 +154,15 @@ server <- function(input, output, session) {
   output$warn_ui <- renderUI({
     if (!.fedstats_ok)
       div(class = "warn-box",
-          strong("Setup required: "),
-          "The fedstats package is not installed. ",
-          "Install it with: ",
-          tags$code("devtools::install('fedstats')"),
-          ", then restart this window.")
+          strong("Setup required"),
+          br(),
+          "The fedstats package is not installed",
+          br(),
+          "Run this in R to fix it",
+          br(),
+          tags$code('devtools::install("fedstats")'),
+          br(),
+          "then restart this window")
   })
 
   # ---- Status badge ----------------------------------------------
@@ -201,7 +200,7 @@ server <- function(input, output, session) {
     } else {
       tagList(
         div(style = "color:#c53030; font-size:.83em; margin-bottom:4px;",
-            "No CSV found in data/ — select one manually:"),
+            "No CSV found in the data folder"),
         fileInput("data_file_upload", "Data file (.csv)",
                   accept = ".csv", buttonLabel = "Browse…",
                   placeholder = "No file selected")
@@ -225,7 +224,7 @@ server <- function(input, output, session) {
   # ---- Start server ----------------------------------------------
   observeEvent(input$btn_start, {
     if (!.fedstats_ok) {
-      showNotification("fedstats package not installed — see setup warning above.",
+      showNotification("fedstats package not installed",
                        type = "error"); return()
     }
 
@@ -237,7 +236,7 @@ server <- function(input, output, session) {
     }
 
     if (is.null(data_path) || !nzchar(data_path) || !file.exists(data_path)) {
-      showNotification("Data file not found. Please select a valid CSV.",
+      showNotification("Data file not found",
                        type = "error"); return()
     }
 
@@ -284,7 +283,7 @@ server <- function(input, output, session) {
   # ---- Log display -----------------------------------------------
   output$server_log <- renderText({
     if (!length(rv$log))
-      return("Server log will appear here once the server starts…")
+      return("Log will appear here once the server starts")
     paste(rv$log, collapse = "\n")
   })
 
