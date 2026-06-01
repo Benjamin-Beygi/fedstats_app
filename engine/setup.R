@@ -79,8 +79,22 @@ if (requireNamespace("fedstats", quietly = TRUE)) {
     quit(status = 1)
   }
 
-  # dependencies = TRUE installs httr + jsonlite from CRAN if needed
-  install.packages(pkg_path, repos = NULL, type = "source", dependencies = TRUE)
+  # When repos = NULL, R ignores dependencies = TRUE and won't fetch CRAN
+  # packages automatically. Pre-install fedstats' declared Imports first.
+  fedstats_imports <- c("httr", "jsonlite")
+  need_imports <- fedstats_imports[!fedstats_imports %in% rownames(installed.packages())]
+  if (length(need_imports) > 0) {
+    cat(sprintf("  Installing fedstats dependencies: %s\n",
+                paste(need_imports, collapse = ", ")))
+    install.packages(need_imports, repos = "https://cloud.r-project.org")
+    still_missing <- need_imports[!need_imports %in% rownames(installed.packages())]
+    if (length(still_missing) > 0) {
+      cat("  ✗  Could not install:", paste(still_missing, collapse = ", "), "\n")
+      quit(status = 1)
+    }
+  }
+
+  install.packages(pkg_path, repos = NULL, type = "source")
 
   if (!requireNamespace("fedstats", quietly = TRUE)) {
     cat("  ✗  fedstats installation failed.\n")
